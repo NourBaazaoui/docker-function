@@ -1,5 +1,7 @@
 "use server"
 
+import { z } from "zod"
+
 interface DockerFunction {
   name: string
   description: string
@@ -116,27 +118,35 @@ const registeredFunctions: DockerFunction[] = [
   },
 ]
 
-export async function registerFunction(formData: FormData) {
-  const name = formData.get("name") as string
-  const description = formData.get("description") as string
-  const dockerImage = formData.get("dockerImage") as string
-  const inputSchema = formData.get("inputSchema") as string
-  const outputSchema = formData.get("outputSchema") as string
-  const version = formData.get("version") as string
+const functionSchema = z.object({
+  name: z.string().min(2, "Le nom doit contenir au moins 2 caractères"),
+  description: z.string().min(10, "La description doit contenir au moins 10 caractères"),
+  dockerImage: z
+    .string()
+    .regex(/^[\w.-]+\/[\w.-]+:[\w.-]+$/, "Format d'image Docker invalide. Utilisez le format : utilisateur/image:tag"),
+  inputSchema: z.string().min(2, "Le schéma d'entrée est requis"),
+  outputSchema: z.string().min(2, "Le schéma de sortie est requis"),
+  version: z.string().min(1, "La version est requise"),
+})
 
-  if (!name || !description || !dockerImage || !inputSchema || !outputSchema || !version) {
-    throw new Error("All fields are required")
+export async function registerFunction(formData: FormData) {
+  const validatedFields = functionSchema.safeParse({
+    name: formData.get("name"),
+    description: formData.get("description"),
+    dockerImage: formData.get("dockerImage"),
+    inputSchema: formData.get("inputSchema"),
+    outputSchema: formData.get("outputSchema"),
+    version: formData.get("version"),
+  })
+
+  if (!validatedFields.success) {
+    return { success: false, errors: validatedFields.error.flatten().fieldErrors }
   }
 
   try {
     // Add the new function to the list
     registeredFunctions.push({
-      name,
-      description,
-      dockerImage,
-      inputSchema,
-      outputSchema,
-      version,
+      ...validatedFields.data,
       createdAt: new Date().toISOString(),
     })
 
